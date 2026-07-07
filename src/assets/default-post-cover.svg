@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" role="img" aria-label="Default post cover">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#edf7f4"/>
+      <stop offset="1" stop-color="#eef2fb"/>
+    </linearGradient>
+    <pattern id="dots" width="38" height="38" patternUnits="userSpaceOnUse">
+      <circle cx="8" cy="8" r="3" fill="#1f8068" fill-opacity=".16"/>
+    </pattern>
+  </defs>
+  <rect width="960" height="540" fill="url(#bg)"/>
+  <rect width="960" height="540" fill="url(#dots)"/>
+  <path d="M160 395c88-64 174-94 258-89 71 4 123 33 182 33 68 0 133-37 200-96v157H160v-5Z" fill="#1f8068" fill-opacity=".16"/>
+  <g transform="translate(330 130)">
+    <rect x="0" y="0" width="300" height="270" rx="28" fill="#ffffff" fill-opacity=".78" stroke="#1f8068" stroke-width="10"/>
+    <path d="M58 76h184M58 126h184M58 176h132" stroke="#1f8068" stroke-width="16" stroke-linecap="round"/>
+    <circle cx="226" cy="212" r="28" fill="#d89d42" fill-opacity=".55"/>
+  </g>
+</svg>
