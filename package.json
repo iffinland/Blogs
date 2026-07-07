@@ -10,7 +10,9 @@
     "test": "vitest run",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "backup:workspace": "bash scripts/backup-workspace.sh",
+    "restore:workspace": "bash scripts/restore-workspace.sh"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^6.0.3",
