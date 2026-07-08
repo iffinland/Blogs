@@ -11,7 +11,7 @@ export const RICH_TEXT_FORMAT_TAGS: Record<RichTextFormat, [string, string]> = {
   heading3: ['[h3]', '[/h3]'],
   quote: ['[quote]', '[/quote]'],
   code: ['[code]', '[/code]'],
-  link: ['[url=https://]', '[/url]'],
+  link: ['[url=qdn://]', '[/url]'],
 };
 
 export type SelectionFormatResult = {
@@ -47,6 +47,56 @@ export const applyWrapFormat = ({
     nextSelectionStart: start + openTag.length,
     nextSelectionEnd: start + openTag.length + selected.length,
   };
+};
+
+export const applyLinkFormat = ({
+  value,
+  selectionStart,
+  selectionEnd,
+  url,
+  label,
+}: {
+  value: string;
+  selectionStart: number;
+  selectionEnd: number;
+  url: string;
+  label?: string;
+}): SelectionFormatResult => {
+  const start = Math.min(selectionStart, selectionEnd);
+  const end = Math.max(selectionStart, selectionEnd);
+  const cleanUrl = url.trim();
+  const selected = value.slice(start, end).trim();
+  const linkLabel = (label?.trim() || selected || cleanUrl).trim();
+  const openTag = `[url=${cleanUrl}]`;
+  const inserted = `${openTag}${linkLabel}[/url]`;
+
+  return {
+    value: `${value.slice(0, start)}${inserted}${value.slice(end)}`,
+    nextSelectionStart: start + openTag.length,
+    nextSelectionEnd: start + openTag.length + linkLabel.length,
+  };
+};
+
+export const applyColorFormat = ({
+  value,
+  selectionStart,
+  selectionEnd,
+  color,
+}: {
+  value: string;
+  selectionStart: number;
+  selectionEnd: number;
+  color: string;
+}): SelectionFormatResult => {
+  const safeColor = /^#[0-9a-f]{6}$/i.test(color) ? color : '#111827';
+  return applyWrapFormat({
+    value,
+    selectionStart,
+    selectionEnd,
+    openTag: `[color=${safeColor}]`,
+    closeTag: '[/color]',
+    placeholder: 'text',
+  });
 };
 
 export const applyListFormat = ({
@@ -138,6 +188,7 @@ export const findFirstQdnImageRef = (value: string): QdnResourceRef | null => {
 export const stripRichTextMarkup = (value: string) =>
   value
     .replace(/\[(\/)?(b|i|u|h2|h3|quote|code)\]/gi, '')
+    .replace(/\[color=#[0-9a-f]{6}\]([\s\S]*?)\[\/color\]/gi, '$1')
     .replace(/\[url=[^\]]+\]([\s\S]*?)\[\/url\]/gi, '$1')
     .replace(/\[(image|video|file)qdn\][\s\S]*?\[\/\1qdn\]/gi, '')
     .replace(/\s+/g, ' ')

@@ -264,6 +264,17 @@ button {
   gap: 16px;
 }
 
+.form-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.form-panel-header h1 {
+  margin-bottom: 0;
+}
+
 .eyebrow {
   margin: 0 0 6px;
   color: var(--accent);
@@ -701,6 +712,7 @@ h3 {
   padding: 10px 12px;
   background: var(--surface);
   color: var(--text);
+  font-weight: 500;
 }
 
 .comment-editor textarea,
@@ -711,13 +723,14 @@ h3 {
 
 .rich-editor {
   display: grid;
-  overflow: hidden;
+  overflow: visible;
   border: 1px solid var(--border-strong);
   border-radius: 8px;
   background: var(--surface);
 }
 
 .rich-toolbar {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -725,6 +738,115 @@ h3 {
   border-bottom: 1px solid var(--border);
   padding: 8px;
   background: var(--surface-muted);
+}
+
+.editor-popover {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 6px);
+  left: 8px;
+  display: grid;
+  width: min(360px, calc(100vw - 48px));
+  gap: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--surface);
+  box-shadow: 0 16px 36px rgb(15 23 42 / 18%);
+}
+
+.editor-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 780;
+}
+
+.editor-popover-header button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  padding: 0;
+  background: var(--surface-muted);
+  color: var(--text);
+}
+
+.editor-popover label {
+  display: grid;
+  gap: 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.editor-popover input {
+  width: 100%;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  padding: 8px 10px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.link-popover-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.link-popover-actions button {
+  min-height: 32px;
+  border-radius: 7px;
+  padding: 6px 10px;
+}
+
+.emoji-grid,
+.color-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+}
+
+.emoji-grid button {
+  display: grid;
+  place-items: center;
+  min-height: 34px;
+  border-radius: 7px;
+  padding: 0;
+  background: var(--surface-muted);
+  color: var(--text);
+  font-size: 18px;
+}
+
+.color-grid button {
+  min-height: 32px;
+  border-color: var(--border-strong);
+  border-radius: 999px;
+  padding: 0;
+}
+
+.custom-color-field {
+  grid-template-columns: 1fr auto;
+  align-items: center;
+}
+
+.editor-popover input[type='color'] {
+  width: 42px;
+  height: 32px;
+  padding: 2px;
+}
+
+.popover-primary-button {
+  justify-self: end;
+  min-height: 32px;
+  border-radius: 7px;
+  padding: 6px 10px;
 }
 
 .tool-button {
@@ -763,6 +885,7 @@ h3 {
   border: 0;
   border-radius: 0;
   padding: 14px;
+  font-weight: 500;
   resize: vertical;
 }
 
@@ -778,11 +901,27 @@ h3 {
   font-size: 13px;
 }
 
-.form-grid label {
+.form-grid label,
+.form-field {
   display: grid;
   gap: 6px;
   color: var(--text-muted);
   font-weight: 680;
+}
+
+.form-field .rich-editor {
+  font-weight: 500;
+}
+
+.form-field > span {
+  font-weight: 680;
+}
+
+.form-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .field-hint {
@@ -835,6 +974,31 @@ h3 {
   background: var(--accent);
   color: #fff;
   border-color: var(--accent);
+}
+
+.form-grid .secondary-button {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.form-grid .rich-toolbar .tool-button,
+.form-grid .editor-popover button {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.form-grid .editor-popover .popover-primary-button,
+.form-grid .link-popover-actions button:first-child {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.form-grid .emoji-grid button {
+  background: var(--surface-muted);
+  color: var(--text);
 }
 
 button:disabled {

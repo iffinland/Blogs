@@ -13,7 +13,7 @@ type Token =
   | { kind: 'media'; type: 'image' | 'video' | 'file'; value: string };
 
 const tokenPattern =
-  /\[(b|i|u|h2|h3|quote|code)\]([\s\S]*?)\[\/\1\]|\[url=([^\]]+)\]([\s\S]*?)\[\/url\]|\[(image|video|file)qdn\]([\s\S]*?)\[\/\5qdn\]/gi;
+  /\[(b|i|u|h2|h3|quote|code)\]([\s\S]*?)\[\/\1\]|\[color=(#[0-9a-f]{6})\]([\s\S]*?)\[\/color\]|\[url=([^\]]+)\]([\s\S]*?)\[\/url\]|\[(image|video|file)qdn\]([\s\S]*?)\[\/\7qdn\]/gi;
 
 const decodeTagValue = (value: string | undefined) => {
   try {
@@ -21,6 +21,21 @@ const decodeTagValue = (value: string | undefined) => {
   } catch {
     return value ?? '';
   }
+};
+
+const getSafeLinkHref = (value: string | undefined) => {
+  const href = value?.trim() ?? '';
+  if (!href) return '';
+  const lowerHref = href.toLowerCase();
+  if (
+    lowerHref.startsWith('qdn://') ||
+    lowerHref.startsWith('/') ||
+    lowerHref.startsWith('#') ||
+    lowerHref.startsWith('?')
+  ) {
+    return href;
+  }
+  return '';
 };
 
 const parseMediaRef = (type: 'image' | 'video' | 'file', payload: string): QdnResourceRef => {
@@ -55,12 +70,14 @@ const tokenize = (value: string) => {
     if (match[1]) {
       tokens.push({ kind: 'wrap', tag: match[1].toLowerCase(), value: match[2] });
     } else if (match[3]) {
-      tokens.push({ kind: 'wrap', tag: 'url', param: match[3], value: match[4] });
+      tokens.push({ kind: 'wrap', tag: 'color', param: match[3], value: match[4] });
     } else if (match[5]) {
+      tokens.push({ kind: 'wrap', tag: 'url', param: match[5], value: match[6] });
+    } else if (match[7]) {
       tokens.push({
         kind: 'media',
-        type: match[5].toLowerCase() as 'image' | 'video' | 'file',
-        value: match[6],
+        type: match[7].toLowerCase() as 'image' | 'video' | 'file',
+        value: match[8],
       });
     }
 
@@ -145,9 +162,19 @@ const renderTokens = (tokens: Token[], keyPrefix: string): ReactNode[] =>
     if (token.tag === 'h3') return <h3 key={key}>{children}</h3>;
     if (token.tag === 'quote') return <blockquote key={key}>{children}</blockquote>;
     if (token.tag === 'code') return <code key={key}>{token.value}</code>;
-    if (token.tag === 'url') {
+    if (token.tag === 'color') {
+      const color = /^#[0-9a-f]{6}$/i.test(token.param ?? '') ? token.param : undefined;
       return (
-        <a key={key} href={token.param} target="_blank" rel="noreferrer">
+        <span key={key} style={color ? { color } : undefined}>
+          {children}
+        </span>
+      );
+    }
+    if (token.tag === 'url') {
+      const href = getSafeLinkHref(token.param);
+      if (!href) return <span key={key}>{children}</span>;
+      return (
+        <a key={key} href={href} target="_blank" rel="noreferrer">
           {children}
         </a>
       );

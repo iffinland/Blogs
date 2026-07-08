@@ -6,6 +6,7 @@ import type {
   BlogSettings,
   QdnResourceRef,
 } from '../../types/blog';
+import type { PendingBlogMedia } from './mediaService';
 import { getSelectedAccount } from '../qortium/accountService';
 import {
   createCommentId,
@@ -14,7 +15,15 @@ import {
   toCommentIdentifier,
   toPostIdentifier,
 } from '../qdn/identifiers';
-import { fetchJsonResource, publishJsonResource, searchResources } from '../qdn/qdnService';
+import {
+  createJsonResourceToPublish,
+  fetchJsonResource,
+  publishJsonResource,
+  publishMultipleQdnResources,
+  searchResources,
+  verifyJsonResource,
+  waitForResourceReady,
+} from '../qdn/qdnService';
 import { stripRichTextMarkup } from './richText';
 
 const DEFAULT_SETTINGS: BlogSettings = {
@@ -266,12 +275,77 @@ export const updateBlog = async (params: {
   return updatedProfile;
 };
 
+const getReferencedPendingMedia = (body: string, pendingMedia?: PendingBlogMedia[]) => {
+  const seen = new Set<string>();
+  return (pendingMedia ?? []).filter((item) => {
+    const key = `${item.ref.service}:${item.ref.name}:${item.ref.identifier}`;
+    if (seen.has(key) || !body.includes(item.ref.identifier)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
+const publishPostWithMedia = async ({
+  post,
+  identifier,
+  pendingMedia,
+}: {
+  post: BlogPost;
+  identifier: string;
+  pendingMedia?: PendingBlogMedia[];
+}) => {
+  const referencedMedia = getReferencedPendingMedia(
+    post.blocks
+      .filter((block) => block.type === 'text')
+      .map((block) => block.content)
+      .join('\n\n'),
+    pendingMedia,
+  );
+
+  if (referencedMedia.length === 0) {
+    await publishJsonResource<BlogPost>({
+      service: 'BLOG_POST',
+      name: post.ownerName,
+      identifier,
+      payload: post,
+      verify: isBlogPost,
+      title: post.title,
+      description: post.excerpt,
+      tags: post.tags,
+      filename: 'post.json',
+    });
+    return;
+  }
+
+  await publishMultipleQdnResources([
+    ...referencedMedia.map((item) => item.resource),
+    createJsonResourceToPublish({
+      service: 'BLOG_POST',
+      name: post.ownerName,
+      identifier,
+      payload: post,
+      title: post.title,
+      description: post.excerpt,
+      tags: post.tags,
+      filename: 'post.json',
+    }),
+  ]);
+
+  await Promise.all([
+    verifyJsonResource<BlogPost>('BLOG_POST', post.ownerName, identifier, isBlogPost),
+    ...referencedMedia.map((item) =>
+      waitForResourceReady(item.ref.service, item.ref.name, item.ref.identifier),
+    ),
+  ]);
+};
+
 export const createPost = async (params: {
   blog: BlogProfile;
   title: string;
   body: string;
   category: string;
   tags: string[];
+  pendingMedia?: PendingBlogMedia[];
 }) => {
   const account = await getSelectedAccount();
   if (account.names.length === 0) {
@@ -306,17 +380,7 @@ export const createPost = async (params: {
     status: 'published',
   };
 
-  await publishJsonResource<BlogPost>({
-    service: 'BLOG_POST',
-    name: ownerName,
-    identifier,
-    payload: post,
-    verify: isBlogPost,
-    title: post.title,
-    description: post.excerpt,
-    tags: post.tags,
-    filename: 'post.json',
-  });
+  await publishPostWithMedia({ post, identifier, pendingMedia: params.pendingMedia });
 
   return { post, identifier };
 };
@@ -327,6 +391,7 @@ export const updatePost = async (params: {
   body: string;
   category: string;
   tags: string[];
+  pendingMedia?: PendingBlogMedia[];
 }) => {
   const account = await getSelectedAccount();
   if (account.names.length === 0) {
@@ -354,17 +419,7 @@ export const updatePost = async (params: {
     status: 'published',
   };
 
-  await publishJsonResource<BlogPost>({
-    service: 'BLOG_POST',
-    name: ownerName,
-    identifier,
-    payload: updatedPost,
-    verify: isBlogPost,
-    title: updatedPost.title,
-    description: updatedPost.excerpt,
-    tags: updatedPost.tags,
-    filename: 'post.json',
-  });
+  await publishPostWithMedia({ post: updatedPost, identifier, pendingMedia: params.pendingMedia });
 
   return { post: updatedPost, identifier };
 };

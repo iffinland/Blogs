@@ -6,8 +6,15 @@ import {
   toImageIdentifier,
   toVideoIdentifier,
 } from '../qdn/identifiers';
-import { waitForResourceReady } from '../qdn/qdnService';
+import { type QdnResourceToPublish, waitForResourceReady } from '../qdn/qdnService';
 import { requestQortium } from '../qortium/qortiumClient';
+
+export type PendingBlogMedia = {
+  type: 'image' | 'video' | 'file';
+  file: File;
+  ref: QdnResourceRef;
+  resource: QdnResourceToPublish;
+};
 
 export const MEDIA_LIMITS = {
   image: {
@@ -75,6 +82,59 @@ const publishFileResource = async ({
     mimeType: file.type || 'application/octet-stream',
     size: file.size,
   };
+};
+
+const createPendingMedia = (
+  type: PendingBlogMedia['type'],
+  file: File,
+  ownerName: string,
+  service: QdnService,
+  identifier: string,
+): PendingBlogMedia => {
+  const ref: QdnResourceRef = {
+    service,
+    name: ownerName,
+    identifier,
+    filename: file.name,
+    mimeType: file.type || 'application/octet-stream',
+    size: file.size,
+  };
+
+  return {
+    type,
+    file,
+    ref,
+    resource: {
+      service,
+      name: ownerName,
+      identifier,
+      filename: file.name,
+      file,
+      title: file.name,
+      description: `${file.type || 'application/octet-stream'} - ${formatBytes(file.size)}`,
+    },
+  };
+};
+
+export const prepareBlogMedia = (
+  file: File,
+  ownerName: string,
+  type: PendingBlogMedia['type'],
+): PendingBlogMedia => {
+  if (type === 'image') {
+    assertMimeType(file, MEDIA_LIMITS.image.acceptedTypes, 'Image');
+    assertFileSize(file, MEDIA_LIMITS.image.maxBytes, 'Image');
+    return createPendingMedia(type, file, ownerName, 'IMAGE', toImageIdentifier(createMediaId()));
+  }
+
+  if (type === 'video') {
+    assertMimeType(file, MEDIA_LIMITS.video.acceptedTypes, 'Video');
+    assertFileSize(file, MEDIA_LIMITS.video.maxBytes, 'Video');
+    return createPendingMedia(type, file, ownerName, 'VIDEO', toVideoIdentifier(createMediaId()));
+  }
+
+  assertFileSize(file, MEDIA_LIMITS.file.maxBytes, 'Attachment');
+  return createPendingMedia(type, file, ownerName, 'FILE', toFileIdentifier(createMediaId()));
 };
 
 export const publishBlogImage = async (file: File, ownerName: string) => {

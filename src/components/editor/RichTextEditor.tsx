@@ -9,18 +9,25 @@ import {
   Link as LinkIcon,
   List,
   ListOrdered,
+  Palette,
   Quote,
+  SmilePlus,
   Underline,
   Video,
+  X,
 } from 'lucide-react';
-import { type ChangeEvent, type ReactNode, useRef, useState } from 'react';
+import { type ChangeEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import {
+  type PendingBlogMedia,
+  prepareBlogMedia,
   publishBlogAttachment,
   publishBlogImage,
   publishBlogVideo,
 } from '../../services/blog/mediaService';
 import {
   RICH_TEXT_FORMAT_TAGS,
+  applyColorFormat,
+  applyLinkFormat,
   applyListFormat,
   applyWrapFormat,
   encodeQdnMediaTag,
@@ -33,6 +40,7 @@ type RichTextEditorProps = {
   ownerName: string;
   disabled?: boolean;
   placeholder?: string;
+  onMediaQueued?: (media: PendingBlogMedia) => void;
   onChange: (value: string) => void;
 };
 
@@ -52,18 +60,40 @@ const formatButtons: Array<{
   { type: 'link', label: 'Link', shortLabel: 'Link', icon: <LinkIcon size={17} /> },
 ];
 
+const emojiOptions = ['🙂', '😀', '😁', '😂', '😍', '🔥', '👍', '🙏', '🎉', '💡', '⭐', '❤️'];
+
+const colorOptions = [
+  '#111827',
+  '#dc2626',
+  '#ea580c',
+  '#ca8a04',
+  '#16a34a',
+  '#0891b2',
+  '#2563eb',
+  '#7c3aed',
+];
+
 export function RichTextEditor({
   value,
   ownerName,
   disabled = false,
   placeholder = 'Write your post...',
+  onMediaQueued,
   onChange,
 }: RichTextEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const videoInputRef = useRef<HTMLInputElement | null>(null);
+  const linkUrlInputRef = useRef<HTMLInputElement | null>(null);
   const [status, setStatus] = useState('');
+  const [isLinkPopupOpen, setIsLinkPopupOpen] = useState(false);
+  const [isEmojiPopupOpen, setIsEmojiPopupOpen] = useState(false);
+  const [isColorPopupOpen, setIsColorPopupOpen] = useState(false);
+  const [customColor, setCustomColor] = useState(colorOptions[0]);
+  const [linkUrl, setLinkUrl] = useState('');
+  const [linkLabel, setLinkLabel] = useState('');
+  const [savedSelection, setSavedSelection] = useState({ selectionStart: 0, selectionEnd: 0 });
   const isUploadDisabled = disabled || !ownerName;
 
   const focusSelection = (selectionStart: number, selectionEnd: number) => {
@@ -87,7 +117,99 @@ export function RichTextEditor({
     selectionEnd: textareaRef.current?.selectionEnd ?? value.length,
   });
 
+  const openLinkPopup = () => {
+    const selection = getSelection();
+    const selectedText = value.slice(selection.selectionStart, selection.selectionEnd).trim();
+    const selectedIsLink = selectedText.toLowerCase().startsWith('qdn://');
+    setIsEmojiPopupOpen(false);
+    setIsColorPopupOpen(false);
+    setSavedSelection(selection);
+    setLinkUrl(selectedIsLink ? selectedText : '');
+    setLinkLabel(selectedIsLink ? '' : selectedText);
+    setIsLinkPopupOpen(true);
+    setStatus('');
+    requestAnimationFrame(() => linkUrlInputRef.current?.focus());
+  };
+
+  const openEmojiPopup = () => {
+    setSavedSelection(getSelection());
+    setIsLinkPopupOpen(false);
+    setIsColorPopupOpen(false);
+    setIsEmojiPopupOpen((current) => !current);
+    setStatus('');
+  };
+
+  const openColorPopup = () => {
+    setSavedSelection(getSelection());
+    setIsLinkPopupOpen(false);
+    setIsEmojiPopupOpen(false);
+    setIsColorPopupOpen((current) => !current);
+    setStatus('');
+  };
+
+  const closeLinkPopup = () => {
+    setIsLinkPopupOpen(false);
+    focusSelection(savedSelection.selectionStart, savedSelection.selectionEnd);
+  };
+
+  const addLink = () => {
+    if (!linkUrl.trim()) {
+      setStatus('Add a QDN link first.');
+      requestAnimationFrame(() => linkUrlInputRef.current?.focus());
+      return;
+    }
+
+    applyResult(
+      applyLinkFormat({
+        value,
+        ...savedSelection,
+        url: linkUrl,
+        label: linkLabel,
+      }),
+    );
+    setIsLinkPopupOpen(false);
+    setLinkUrl('');
+    setLinkLabel('');
+    setStatus('Link inserted.');
+  };
+
+  const insertEmoji = (emoji: string) => {
+    applyResult(insertAtSelection({ value, ...savedSelection, snippet: emoji }));
+    setIsEmojiPopupOpen(false);
+  };
+
+  const applyTextColor = (color: string) => {
+    applyResult(applyColorFormat({ value, ...savedSelection, color }));
+    setIsColorPopupOpen(false);
+  };
+
+  useEffect(() => {
+    if (!isLinkPopupOpen && !isEmojiPopupOpen && !isColorPopupOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setIsLinkPopupOpen(false);
+      setIsEmojiPopupOpen(false);
+      setIsColorPopupOpen(false);
+      requestAnimationFrame(() => {
+        textareaRef.current?.focus();
+        textareaRef.current?.setSelectionRange(
+          savedSelection.selectionStart,
+          savedSelection.selectionEnd,
+        );
+      });
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isColorPopupOpen, isEmojiPopupOpen, isLinkPopupOpen, savedSelection]);
+
   const handleFormat = (format: RichTextFormat) => {
+    if (format === 'link') {
+      openLinkPopup();
+      return;
+    }
+
     const [openTag, closeTag] = RICH_TEXT_FORMAT_TAGS[format];
     applyResult(
       applyWrapFormat({
@@ -95,7 +217,7 @@ export function RichTextEditor({
         ...getSelection(),
         openTag,
         closeTag,
-        placeholder: format === 'link' ? 'link text' : 'text',
+        placeholder: 'text',
       }),
     );
   };
@@ -117,8 +239,16 @@ export function RichTextEditor({
     event.target.value = '';
     if (!file || isUploadDisabled) return;
 
-    setStatus(`Uploading ${type} to QDN...`);
     try {
+      if (onMediaQueued) {
+        const media = prepareBlogMedia(file, ownerName, type);
+        onMediaQueued(media);
+        insertSnippet(encodeQdnMediaTag(type, media.ref));
+        setStatus(`${file.name} queued for publish.`);
+        return;
+      }
+
+      setStatus(`Uploading ${type} to QDN...`);
       const ref =
         type === 'image'
           ? await publishBlogImage(file, ownerName)
@@ -149,6 +279,128 @@ export function RichTextEditor({
             <span className="tool-label">{button.shortLabel}</span>
           </button>
         ))}
+        {isLinkPopupOpen ? (
+          <div className="editor-popover link-popover" role="dialog" aria-label="Add link">
+            <div className="editor-popover-header">
+              <span>Add link</span>
+              <button type="button" onClick={closeLinkPopup} aria-label="Close link editor">
+                <X size={16} />
+              </button>
+            </div>
+            <label>
+              Link
+              <input
+                ref={linkUrlInputRef}
+                value={linkUrl}
+                onChange={(event) => setLinkUrl(event.target.value)}
+                placeholder="qdn://APP/name/identifier"
+              />
+            </label>
+            <label>
+              Label
+              <input
+                value={linkLabel}
+                onChange={(event) => setLinkLabel(event.target.value)}
+                placeholder="Optional label"
+              />
+            </label>
+            <div className="link-popover-actions">
+              <button type="button" onClick={addLink}>
+                Add
+              </button>
+              <button type="button" onClick={closeLinkPopup}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : null}
+        <button
+          type="button"
+          className="tool-button"
+          title="Insert emoji"
+          aria-label="Insert emoji"
+          onClick={openEmojiPopup}
+          disabled={disabled}
+        >
+          <span className="tool-icon">
+            <SmilePlus size={17} />
+          </span>
+          <span className="tool-label">Emoji</span>
+        </button>
+        {isEmojiPopupOpen ? (
+          <div className="editor-popover emoji-popover" role="dialog" aria-label="Insert emoji">
+            <div className="editor-popover-header">
+              <span>Insert emoji</span>
+              <button
+                type="button"
+                onClick={() => setIsEmojiPopupOpen(false)}
+                aria-label="Close emoji picker"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="emoji-grid">
+              {emojiOptions.map((emoji) => (
+                <button type="button" key={emoji} onClick={() => insertEmoji(emoji)}>
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        <button
+          type="button"
+          className="tool-button"
+          title="Text color"
+          aria-label="Text color"
+          onClick={openColorPopup}
+          disabled={disabled}
+        >
+          <span className="tool-icon">
+            <Palette size={17} />
+          </span>
+          <span className="tool-label">Color</span>
+        </button>
+        {isColorPopupOpen ? (
+          <div className="editor-popover color-popover" role="dialog" aria-label="Text color">
+            <div className="editor-popover-header">
+              <span>Text color</span>
+              <button
+                type="button"
+                onClick={() => setIsColorPopupOpen(false)}
+                aria-label="Close color picker"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="color-grid">
+              {colorOptions.map((color) => (
+                <button
+                  type="button"
+                  key={color}
+                  style={{ backgroundColor: color }}
+                  onClick={() => applyTextColor(color)}
+                  aria-label={`Use ${color}`}
+                />
+              ))}
+            </div>
+            <label className="custom-color-field">
+              Custom
+              <input
+                type="color"
+                value={customColor}
+                onChange={(event) => setCustomColor(event.target.value)}
+              />
+            </label>
+            <button
+              type="button"
+              className="popover-primary-button"
+              onClick={() => applyTextColor(customColor)}
+            >
+              Apply
+            </button>
+          </div>
+        ) : null}
         <span className="toolbar-divider" />
         <button
           type="button"

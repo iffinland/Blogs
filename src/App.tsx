@@ -18,6 +18,7 @@ import {
   Moon,
   Plus,
   Sun,
+  X,
 } from 'lucide-react';
 import type {
   AccountProfile,
@@ -54,7 +55,7 @@ import {
   fetchBlogPost,
   updatePost,
 } from './services/blog/blogService';
-import { publishBlogImage } from './services/blog/mediaService';
+import { type PendingBlogMedia, publishBlogImage } from './services/blog/mediaService';
 import { findFirstQdnImageRef } from './services/blog/richText';
 import { buildBlogLink, buildPostLink, getInitialDeepLink } from './services/blog/deepLinks';
 import { getQdnResourceUrl } from './services/qdn/qdnService';
@@ -148,6 +149,18 @@ const getCanonicalTags = (value: string, suggestions: string[]) => {
     items.push(canonical);
     return items;
   }, []);
+};
+
+const mergePendingMedia = (items: PendingBlogMedia[], item: PendingBlogMedia) => {
+  const key = `${item.ref.service}:${item.ref.name}:${item.ref.identifier}`;
+  if (
+    items.some(
+      (current) => `${current.ref.service}:${current.ref.name}:${current.ref.identifier}` === key,
+    )
+  ) {
+    return items;
+  }
+  return [...items, item];
 };
 
 const getTaxonomyUrl = (type: 'category' | 'tag', value: string) =>
@@ -1003,6 +1016,7 @@ function CreatePostPage() {
   const [body, setBody] = useState('');
   const [category, setCategory] = useState('');
   const [tags, setTags] = useState('');
+  const [pendingMedia, setPendingMedia] = useState<PendingBlogMedia[]>([]);
   const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -1047,6 +1061,7 @@ function CreatePostPage() {
         body,
         category: getCanonicalTaxonomyValue(category, taxonomy.categories),
         tags: getCanonicalTags(tags, taxonomy.tags),
+        pendingMedia,
       });
       navigate(`/post/${result.post.ownerName}/${result.identifier}`);
     } catch (error) {
@@ -1059,7 +1074,12 @@ function CreatePostPage() {
   const selectedBlog = blogs.find((item) => `${item.ownerName}::${item.blogId}` === selected);
 
   return (
-    <FormPanel title={t('form.createPost')} message={message}>
+    <FormPanel
+      title={t('form.createPost')}
+      message={message}
+      closeLabel={t('actions.cancel')}
+      onClose={() => navigate('/')}
+    >
       <label>
         {t('form.blog')}
         <select value={selected} onChange={(event) => setSelected(event.target.value)}>
@@ -1077,16 +1097,17 @@ function CreatePostPage() {
         {t('form.title')}
         <input value={title} onChange={(event) => setTitle(event.target.value)} />
       </label>
-      <label>
-        {t('form.body')}
+      <div className="form-field">
+        <span>{t('form.body')}</span>
         <RichTextEditor
           value={body}
           ownerName={selectedBlog?.ownerName ?? ''}
           disabled={isSubmitting}
           placeholder={t('placeholder.postBody')}
+          onMediaQueued={(media) => setPendingMedia((current) => mergePendingMedia(current, media))}
           onChange={setBody}
         />
-      </label>
+      </div>
       <label>
         {t('form.category')}
         <TaxonomyTextInput
@@ -1104,9 +1125,14 @@ function CreatePostPage() {
           onChange={setTags}
         />
       </label>
-      <button type="button" onClick={() => void submit()} disabled={isSubmitting}>
-        {t('actions.publishPost')}
-      </button>
+      <div className="form-actions">
+        <button type="button" onClick={() => void submit()} disabled={isSubmitting}>
+          {t('actions.publishPost')}
+        </button>
+        <button type="button" className="secondary-button" onClick={() => navigate('/')}>
+          {t('actions.cancel')}
+        </button>
+      </div>
     </FormPanel>
   );
 }
@@ -1127,6 +1153,7 @@ function EditPostPage() {
   const [body, setBody] = useState('');
   const [category, setCategory] = useState('');
   const [tags, setTags] = useState('');
+  const [pendingMedia, setPendingMedia] = useState<PendingBlogMedia[]>([]);
   const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -1164,6 +1191,7 @@ function EditPostPage() {
         body,
         category: getCanonicalTaxonomyValue(category, taxonomy.categories),
         tags: getCanonicalTags(tags, taxonomy.tags),
+        pendingMedia,
       });
       navigate(`/post/${result.post.ownerName}/${result.identifier}`);
     } catch (error) {
@@ -1183,16 +1211,17 @@ function EditPostPage() {
         {t('form.title')}
         <input value={title} onChange={(event) => setTitle(event.target.value)} />
       </label>
-      <label>
-        {t('form.body')}
+      <div className="form-field">
+        <span>{t('form.body')}</span>
         <RichTextEditor
           value={body}
           ownerName={post?.ownerName ?? ''}
           disabled={isSubmitting || !post}
           placeholder={t('placeholder.postBody')}
+          onMediaQueued={(media) => setPendingMedia((current) => mergePendingMedia(current, media))}
           onChange={setBody}
         />
-      </label>
+      </div>
       <label>
         {t('form.category')}
         <TaxonomyTextInput
@@ -1220,15 +1249,26 @@ function EditPostPage() {
 function FormPanel({
   title,
   message,
+  closeLabel,
+  onClose,
   children,
 }: {
   title: string;
   message: string;
+  closeLabel?: string;
+  onClose?: () => void;
   children: React.ReactNode;
 }) {
   return (
     <section className="form-panel">
-      <h1>{title}</h1>
+      <div className="form-panel-header">
+        <h1>{title}</h1>
+        {onClose ? (
+          <button type="button" className="icon-button" onClick={onClose} aria-label={closeLabel}>
+            <X size={18} />
+          </button>
+        ) : null}
+      </div>
       {message ? <Notice tone="error" message={message} /> : null}
       <div className="form-grid">{children}</div>
     </section>
