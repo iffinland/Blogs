@@ -10,6 +10,26 @@ export type QdnResourceStatus = {
   percentLoaded?: number;
 };
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const isQdnErrorEnvelope = (
+  value: unknown,
+): value is { error: number; message: string } =>
+  isRecord(value) &&
+  typeof value.error === 'number' &&
+  typeof value.message === 'string';
+
+export class QdnResourceError extends Error {
+  readonly code: number;
+
+  constructor(code: number, message: string) {
+    super(message);
+    this.name = 'QdnResourceError';
+    this.code = code;
+  }
+}
+
 type PublishJsonParams = {
   service: QdnService;
   name: string;
@@ -48,7 +68,7 @@ export type QdnResourceToPublish =
 
 const sleep = async (durationMs: number) => {
   await new Promise<void>((resolve) => {
-    window.setTimeout(resolve, durationMs);
+    setTimeout(resolve, durationMs);
   });
 };
 
@@ -104,7 +124,74 @@ export const fetchJsonResource = async <T>(
     name,
     identifier,
   });
+
+  if (isQdnErrorEnvelope(raw)) {
+    throw new QdnResourceError(raw.error, raw.message);
+  }
+
   return parseJsonLike<T>(raw);
+};
+
+/**
+ * Fetch a JSON QDN resource with readiness polling for temporary
+ * unavailability (error 1401).  Only error 1401 triggers polling;
+ * every other error is propagated immediately.
+ *
+ * Intended for critical authoritative read paths (blog profile, post
+ * page) where the user is waiting for a single known resource.  Do NOT
+ * use for list cards, post rows, bulk fetches, or search — those paths
+ * should degrade gracefully with metadata.
+ */
+export const fetchJsonResourceWithReadiness = async <T>(
+  service: QdnService,
+  name: string,
+  identifier: string,
+  timeoutMs = 15_000,
+): Promise<T> => {
+  // Attempt 1: normal fetch
+  try {
+    return await fetchJsonResource<T>(service, name, identifier);
+  } catch (error) {
+    if (!(error instanceof QdnResourceError) || error.code !== 1401) {
+      throw error;
+    }
+    // 1401 — temporary unavailability, poll until ready
+  }
+
+  const startedAt = Date.now();
+  let buildRequested = false;
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const status = await getResourceStatus(service, name, identifier);
+
+    if (!buildRequested) {
+      // Request the Core to download missing chunks on the first poll.
+      // Fire-and-forget — we don't need the response.
+      requestQortium<unknown>({
+        action: 'GET_QDN_RESOURCE_STATUS',
+        service,
+        name,
+        identifier,
+        build: true,
+      }).catch(() => undefined);
+      buildRequested = true;
+    }
+
+    if (status.status === 'READY') {
+      return fetchJsonResource<T>(service, name, identifier);
+    }
+
+    if (status.status === 'NOT_PUBLISHED') {
+      throw new Error('Resource is not published.');
+    }
+
+    await sleep(1500);
+  }
+
+  throw new QdnResourceError(
+    1401,
+    'Resource data is temporarily unavailable. Please try again.',
+  );
 };
 
 export const getResourceStatus = async (service: QdnService, name: string, identifier: string) => {

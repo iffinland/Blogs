@@ -18,8 +18,10 @@ import {
 import {
   createJsonResourceToPublish,
   fetchJsonResource,
+  fetchJsonResourceWithReadiness,
   publishJsonResource,
   publishMultipleQdnResources,
+  QdnResourceError,
   searchResources,
   verifyJsonResource,
   waitForResourceReady,
@@ -175,6 +177,28 @@ export const fetchBlogProfile = (ownerName: string, blogId: string) =>
 export const fetchBlogPost = (ownerName: string, postIdentifier: string) =>
   fetchJsonResource<BlogPost>('BLOG_POST', ownerName, postIdentifier);
 
+/**
+ * Critical-read variants that poll for readiness when the resource is
+ * temporarily unavailable (QDN error 1401).  Use only for authoritative
+ * page-level loads — not for list cards, post rows, or bulk fetches.
+ */
+export const fetchBlogProfileReady = (ownerName: string, blogId: string) =>
+  fetchJsonResourceWithReadiness<BlogProfile>('BLOG', ownerName, blogId);
+
+export const fetchBlogPostReady = (ownerName: string, postIdentifier: string) =>
+  fetchJsonResourceWithReadiness<BlogPost>('BLOG_POST', ownerName, postIdentifier);
+
+/**
+ * Resolve a blog post with readiness polling on the direct (non-_)
+ * path.  The _ resolver already handles 1401 internally.
+ */
+export const resolveBlogPostReady = async (ownerName: string, postIdentifier: string) => {
+  if (ownerName && ownerName !== '_') {
+    return fetchBlogPostReady(ownerName, postIdentifier);
+  }
+  return resolveBlogPost(ownerName, postIdentifier);
+};
+
 export const resolveBlogPost = async (ownerName: string, postIdentifier: string) => {
   if (ownerName && ownerName !== '_') return fetchBlogPost(ownerName, postIdentifier);
 
@@ -194,13 +218,42 @@ export const resolveBlogPost = async (ownerName: string, postIdentifier: string)
     (a, b) => (b.updated ?? b.created ?? 0) - (a.updated ?? a.created ?? 0),
   );
 
+  let hadUnavailableCandidate = false;
+
   for (const candidate of sorted) {
     try {
       const post = await fetchBlogPost(candidate.name, candidate.identifier);
       if (post.ownerName === candidate.name && post.status === 'published') return post;
-    } catch {
-      // Resource unavailable — skip and try next candidate.
+    } catch (error) {
+      if (error instanceof QdnResourceError && error.code === 1401) {
+        // Temporarily unverifiable — poll briefly.  If the
+        // candidate becomes available, validate and return it.
+        // If it stays unavailable, skip to the next candidate
+        // instead of blocking resolution entirely.
+        hadUnavailableCandidate = true;
+        try {
+          const post = await fetchJsonResourceWithReadiness<BlogPost>(
+            'BLOG_POST',
+            candidate.name,
+            candidate.identifier,
+            3_000,
+          );
+          if (post.ownerName === candidate.name && post.status === 'published') return post;
+          // Became available but not truthful — fall through.
+        } catch {
+          // Still unavailable after sub-budget — continue.
+        }
+        continue;
+      }
+      // Non-1401 error — skip and try next candidate.
     }
+  }
+
+  if (hadUnavailableCandidate) {
+    throw new QdnResourceError(
+      1401,
+      'Post data is temporarily unavailable. Please try again.',
+    );
   }
 
   throw new Error('Post was not found on QDN.');

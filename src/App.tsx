@@ -45,12 +45,14 @@ import {
   createComment,
   createPost,
   fetchBlogProfile,
+  fetchBlogProfileReady,
   listBlogs,
   listBlogsForNames,
   listComments,
   listPosts,
   listUsedTaxonomy,
   resolveBlogPost,
+  resolveBlogPostReady,
   updateBlog,
   fetchBlogPost,
   updatePost,
@@ -483,7 +485,7 @@ function BlogPage() {
     const load = async () => {
       try {
         const [blogProfile, postItems] = await Promise.all([
-          fetchBlogProfile(name, blogId),
+          fetchBlogProfileReady(name, blogId),
           listPosts(blogId, 0, 30, name),
         ]);
         setProfile({ status: 'ready', data: blogProfile });
@@ -567,7 +569,7 @@ function PostPage() {
 
   const load = useCallback(async () => {
     try {
-      const loadedPost = await resolveBlogPost(name, postIdentifier);
+      const loadedPost = await resolveBlogPostReady(name, postIdentifier);
       setPost({ status: 'ready', data: loadedPost });
       setComments(await listComments(loadedPost.postId));
     } catch (error) {
