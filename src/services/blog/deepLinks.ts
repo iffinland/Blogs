@@ -25,8 +25,10 @@ export const getAppBaseAddress = (location: Pick<Location, 'pathname'> = window.
   )}`;
 };
 
-export const buildBlogLink = (blogId: string) =>
-  `${getAppBaseAddress()}?blog=${encodeURIComponent(blogId)}`;
+export const buildBlogLink = (blogId: string, publisherName?: string) => {
+  const base = `${getAppBaseAddress()}?blog=${encodeURIComponent(blogId)}`;
+  return publisherName ? `${base}&name=${encodeURIComponent(publisherName)}` : base;
+};
 
 export const buildPostLink = (postIdentifier: string, publisherName?: string) => {
   const base = `${getAppBaseAddress()}?post=${encodeURIComponent(postIdentifier)}`;

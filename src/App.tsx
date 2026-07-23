@@ -533,7 +533,7 @@ function BlogPage() {
                 identifier={profile.data.blogId}
                 title={profile.data.title}
                 labels={socialLabels(t)}
-                shareLink={buildBlogLink(profile.data.blogId)}
+                shareLink={buildBlogLink(profile.data.blogId, profile.data.ownerName ?? name)}
                 showComments={false}
               />
             ) : null}
@@ -1367,7 +1367,7 @@ function BlogListCard({ item }: { item: BlogListItem }) {
         identifier={profile?.blogId ?? item.identifier}
         title={title}
         labels={socialLabels(t)}
-        shareLink={buildBlogLink(item.identifier)}
+        shareLink={buildBlogLink(item.identifier, profile?.ownerName ?? item.name)}
         showComments={false}
       />
     </article>
@@ -1528,12 +1528,20 @@ export function App() {
       navigate(`/post/${name}/${deepLink.postIdentifier}`, { replace: true });
     }
     if (deepLink.blogId) {
-      void listBlogs()
-        .then((items) => items.find((item) => item.identifier === deepLink.blogId))
-        .then((item) => {
-          if (item) navigate(`/blog/${item.name}/${item.identifier}`, { replace: true });
-        })
-        .catch(() => undefined);
+      if (deepLink.publisherName) {
+        navigate(`/blog/${deepLink.publisherName}/${deepLink.blogId}`, { replace: true });
+      } else {
+        // Legacy link without publisher — search all publishers.
+        // An identifier-only blog link is inherently ambiguous when
+        // multiple publishers share the same blogId.  Canonical
+        // publisher-aware links (&name=) are preferred.
+        void listBlogs()
+          .then((items) => items.find((item) => item.identifier === deepLink.blogId))
+          .then((item) => {
+            if (item) navigate(`/blog/${item.name}/${item.identifier}`, { replace: true });
+          })
+          .catch(() => undefined);
+      }
     }
   }, [navigate]);
 
