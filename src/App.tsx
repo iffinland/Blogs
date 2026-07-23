@@ -484,7 +484,7 @@ function BlogPage() {
       try {
         const [blogProfile, postItems] = await Promise.all([
           fetchBlogProfile(name, blogId),
-          listPosts(blogId),
+          listPosts(blogId, 0, 30, name),
         ]);
         setProfile({ status: 'ready', data: blogProfile });
         setPosts({ status: 'ready', data: postItems });
@@ -664,7 +664,7 @@ function PostPage() {
           identifier={postIdentifier}
           title={post.data.title}
           labels={socialLabels(t)}
-          shareLink={buildPostLink(postIdentifier)}
+          shareLink={buildPostLink(postIdentifier, post.data?.ownerName ?? name)}
           commentsCount={comments.length}
           onComments={() =>
             commentsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -1455,7 +1455,7 @@ function PostListRow({ item, showAuthor = false }: { item: BlogListItem; showAut
         identifier={item.identifier}
         title={title}
         labels={socialLabels(t)}
-        shareLink={buildPostLink(item.identifier)}
+        shareLink={buildPostLink(item.identifier, post?.ownerName ?? item.name)}
         onComments={() => navigate(`/post/${item.name}/${item.identifier}`)}
       />
     </article>
@@ -1521,7 +1521,10 @@ export function App() {
 
   useEffect(() => {
     const deepLink = getInitialDeepLink();
-    if (deepLink.postIdentifier) navigate(`/post/_/${deepLink.postIdentifier}`, { replace: true });
+    if (deepLink.postIdentifier) {
+      const name = deepLink.publisherName || '_';
+      navigate(`/post/${name}/${deepLink.postIdentifier}`, { replace: true });
+    }
     if (deepLink.blogId) {
       void listBlogs()
         .then((items) => items.find((item) => item.identifier === deepLink.blogId))

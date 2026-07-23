@@ -28,13 +28,16 @@ export const getAppBaseAddress = (location: Pick<Location, 'pathname'> = window.
 export const buildBlogLink = (blogId: string) =>
   `${getAppBaseAddress()}?blog=${encodeURIComponent(blogId)}`;
 
-export const buildPostLink = (postIdentifier: string) =>
-  `${getAppBaseAddress()}?post=${encodeURIComponent(postIdentifier)}`;
+export const buildPostLink = (postIdentifier: string, publisherName?: string) => {
+  const base = `${getAppBaseAddress()}?post=${encodeURIComponent(postIdentifier)}`;
+  return publisherName ? `${base}&name=${encodeURIComponent(publisherName)}` : base;
+};
 
 export const getInitialDeepLink = (search = window.location.search) => {
   const params = new URLSearchParams(search);
   return {
     blogId: params.get('blog')?.trim() || null,
     postIdentifier: params.get('post')?.trim() || null,
+    publisherName: params.get('name')?.trim() || null,
   };
 };

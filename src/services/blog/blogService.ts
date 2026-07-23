@@ -95,10 +95,17 @@ export const listBlogsForNames = async (names: string[]) => {
   });
 };
 
-export const listPosts = async (blogId?: string, offset = 0, limit = 30) => {
+export const listPosts = async (
+  blogId?: string,
+  offset = 0,
+  limit = 30,
+  name?: string,
+) => {
   return searchResources({
     service: 'BLOG_POST',
     identifier: blogId ? `p.${blogId}.` : 'p.',
+    name,
+    exactMatchNames: Boolean(name),
     prefix: true,
     includeMetadata: true,
     limit,
@@ -171,6 +178,11 @@ export const fetchBlogPost = (ownerName: string, postIdentifier: string) =>
 export const resolveBlogPost = async (ownerName: string, postIdentifier: string) => {
   if (ownerName && ownerName !== '_') return fetchBlogPost(ownerName, postIdentifier);
 
+  // _ resolver (legacy fallback): search across publishers for the
+  // exact identifier.  To prevent a cross-publisher collision from
+  // silently selecting the wrong publisher, validate that the embedded
+  // ownerName matches the QDN publisher name.  The first truthful
+  // publisher (by QDN metadata recency) wins.
   const matches = await searchResources({
     service: 'BLOG_POST',
     identifier: postIdentifier,
@@ -178,11 +190,20 @@ export const resolveBlogPost = async (ownerName: string, postIdentifier: string)
     includeMetadata: true,
     limit: 10,
   });
-  const latest = [...matches].sort(
+  const sorted = [...matches].sort(
     (a, b) => (b.updated ?? b.created ?? 0) - (a.updated ?? a.created ?? 0),
-  )[0];
-  if (!latest) throw new Error('Post was not found on QDN.');
-  return fetchBlogPost(latest.name, latest.identifier);
+  );
+
+  for (const candidate of sorted) {
+    try {
+      const post = await fetchBlogPost(candidate.name, candidate.identifier);
+      if (post.ownerName === candidate.name && post.status === 'published') return post;
+    } catch {
+      // Resource unavailable — skip and try next candidate.
+    }
+  }
+
+  throw new Error('Post was not found on QDN.');
 };
 
 export const createBlog = async (params: {
