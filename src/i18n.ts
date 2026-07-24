@@ -63,8 +63,10 @@ const EN_STRINGS = {
   'actions.publishPost': 'Publish Post',
   'actions.publishComment': 'Publish Comment',
   'actions.editBlog': 'Edit Blog',
+  'actions.deleteBlog': 'Delete Blog',
   'actions.saveBlog': 'Save Blog',
   'actions.editPost': 'Edit Post',
+  'actions.deletePost': 'Delete Post',
   'actions.savePost': 'Save Post',
   'actions.cancel': 'Cancel',
   'theme.light': 'Light',
@@ -76,6 +78,13 @@ const EN_STRINGS = {
   'form.editBlog': 'Edit Blog',
   'form.createPost': 'Create Post',
   'form.editPost': 'Edit Post',
+  'form.deletePostTitle': 'Delete post?',
+  'form.deletePostWarning': 'This action is permanent and cannot be undone. The post and all associated data will be removed from the QDN network.',
+  'form.deletePostConfirm': 'Delete post',
+  'form.deleteBlogTitle': 'Delete blog?',
+  'form.deleteBlogWarning': 'This action is permanent and cannot be undone. The blog profile will be removed from the QDN network.',
+  'form.deleteBlogHasPosts': 'This blog still contains {count} post(s). Posts are independent QDN resources and will not be deleted automatically. Delete the posts first before deleting the blog.',
+  'form.deleteBlogConfirm': 'Delete blog',
   'form.blogHandle': 'Blog Handle',
   'form.publishingName': 'Publishing Name',
   'form.blog': 'Blog',
@@ -100,6 +109,8 @@ const EN_STRINGS = {
   'error.publishPost': 'Unable to publish post.',
   'error.updatePost': 'Unable to update post.',
   'error.editPostOwner': 'Only the post owner can edit this post.',
+  'error.deletePost': 'Unable to delete the post. Please try again.',
+  'error.deleteBlog': 'Unable to delete the blog. Please try again.',
   'error.publishInHome': 'Open this app inside Qortium Home to publish.',
   'error.selectBlog': 'Create or select a blog first.',
   'error.noNames': 'This account has no registered Qortium names.',
@@ -140,8 +151,10 @@ const ET_STRINGS: Catalog = {
   'actions.publishPost': 'Avalda postitus',
   'actions.publishComment': 'Avalda kommentaar',
   'actions.editBlog': 'Muuda blogi',
+  'actions.deleteBlog': 'Kustuta blogi',
   'actions.saveBlog': 'Salvesta blogi',
   'actions.editPost': 'Muuda postitust',
+  'actions.deletePost': 'Kustuta postitus',
   'actions.savePost': 'Salvesta postitus',
   'actions.cancel': 'Tühista',
   'theme.light': 'Hele',
@@ -153,6 +166,13 @@ const ET_STRINGS: Catalog = {
   'form.editBlog': 'Muuda blogi',
   'form.createPost': 'Loo postitus',
   'form.editPost': 'Muuda postitust',
+  'form.deletePostTitle': 'Kustuta postitus?',
+  'form.deletePostWarning': 'See toiming on püsiv ja seda ei saa tagasi võtta. Postitus ja kõik sellega seotud andmed eemaldatakse QDN-võrgust.',
+  'form.deletePostConfirm': 'Kustuta postitus',
+  'form.deleteBlogTitle': 'Kustuta blogi?',
+  'form.deleteBlogWarning': 'See toiming on püsiv ja seda ei saa tagasi võtta. Blogi profiil eemaldatakse QDN-võrgust.',
+  'form.deleteBlogHasPosts': 'Selles blogis on veel {count} postitust. Postitused on iseseisvad QDN-ressursid ja neid ei kustutata automaatselt. Kustuta enne postitused ja seejärel blogi.',
+  'form.deleteBlogConfirm': 'Kustuta blogi',
   'form.blogHandle': 'Blogi tunnus',
   'form.publishingName': 'Avaldamise nimi',
   'form.blog': 'Blogi',
@@ -173,6 +193,8 @@ const ET_STRINGS: Catalog = {
   'error.publishPost': 'Postituse avaldamine ebaõnnestus.',
   'error.updatePost': 'Postituse uuendamine ebaõnnestus.',
   'error.editPostOwner': 'Ainult postituse omanik saab seda postitust muuta.',
+  'error.deletePost': 'Postituse kustutamine ebaõnnestus. Palun proovi uuesti.',
+  'error.deleteBlog': 'Blogi kustutamine ebaõnnestus. Palun proovi uuesti.',
   'error.publishInHome': 'Avaldamiseks ava see äpp Qortium Home’is.',
   'error.selectBlog': 'Loo või vali esmalt blogi.',
   'error.noNames': 'Sellel kontol ei ole registreeritud Qortiumi nimesid.',
@@ -206,7 +228,13 @@ export const isRtlLanguage = (language: SupportedLanguage) => RTL_LANGUAGES.has(
 
 export const createTranslator = (language: SupportedLanguage) => {
   const catalog = CATALOGS[language] ?? {};
-  return (key: TranslationKey) => catalog[key] ?? EN_STRINGS[key];
+  return (key: TranslationKey, values?: Record<string, string | number>) => {
+    const template = catalog[key] ?? EN_STRINGS[key];
+    if (!values) return template;
+    return template.replace(/\{(\w+)\}/g, (_, name: string) =>
+      String(values[name] ?? `{${name}}`),
+    );
+  };
 };
 
 export const getDefaultLanguage = () => DEFAULT_LANGUAGE;

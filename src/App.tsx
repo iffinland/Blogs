@@ -18,6 +18,7 @@ import {
   Moon,
   Plus,
   Sun,
+  Trash2,
   X,
 } from 'lucide-react';
 import type {
@@ -44,6 +45,9 @@ import {
   createBlog,
   createComment,
   createPost,
+  countPostsInBlog,
+  deleteBlog,
+  deleteBlogPost,
   fetchBlogProfile,
   fetchBlogProfileReady,
   listBlogs,
@@ -474,30 +478,36 @@ function HomePage() {
 function BlogPage() {
   const { t } = useAppLocale();
   const { name = '', blogId = '' } = useParams();
+  const navigate = useNavigate();
   const [account, setAccount] = useState<AccountProfile | null>(null);
   const [profile, setProfile] = useState<LoadState<BlogProfile | null>>({
     status: 'loading',
     data: null,
   });
   const [posts, setPosts] = useState<LoadState<BlogListItem[]>>({ status: 'loading', data: [] });
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const [postCountForDelete, setPostCountForDelete] = useState(0);
+
+  const load = useCallback(async () => {
+    try {
+      const [blogProfile, postItems] = await Promise.all([
+        fetchBlogProfileReady(name, blogId),
+        listPosts(blogId, 0, 30, name),
+      ]);
+      setProfile({ status: 'ready', data: blogProfile });
+      setPosts({ status: 'ready', data: postItems });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t('error.loadBlog');
+      setProfile({ status: 'error', data: null, message });
+      setPosts({ status: 'error', data: [], message });
+    }
+  }, [name, blogId, t]);
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        const [blogProfile, postItems] = await Promise.all([
-          fetchBlogProfileReady(name, blogId),
-          listPosts(blogId, 0, 30, name),
-        ]);
-        setProfile({ status: 'ready', data: blogProfile });
-        setPosts({ status: 'ready', data: postItems });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : t('error.loadBlog');
-        setProfile({ status: 'error', data: null, message });
-        setPosts({ status: 'error', data: [], message });
-      }
-    };
     void load();
-  }, [name, blogId, t]);
+  }, [load]);
 
   useEffect(() => {
     void getSelectedAccount()
@@ -505,9 +515,36 @@ function BlogPage() {
       .catch(() => setAccount(null));
   }, []);
 
+  const handleDeleteBlog = async () => {
+    if (!profile.data || isDeleting) return;
+    setIsDeleting(true);
+    setDeleteError('');
+    try {
+      await deleteBlog(profile.data.ownerName, blogId);
+      setShowDeleteConfirm(false);
+      navigate('/', { replace: true });
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : t('error.deleteBlog'));
+      setIsDeleting(false);
+    }
+  };
+
+  const openDeleteConfirm = async () => {
+    if (!profile.data) return;
+    try {
+      const count = await countPostsInBlog(blogId, profile.data.ownerName);
+      setPostCountForDelete(count);
+    } catch {
+      setPostCountForDelete(0);
+    }
+    setShowDeleteConfirm(true);
+    setDeleteError('');
+  };
+
   if (profile.status === 'error') return <Notice tone="error" message={profile.message} />;
 
   const canEdit = Boolean(profile.data && account?.names.includes(profile.data.ownerName));
+  const hasPosts = postCountForDelete > 0;
 
   return (
     <section className="page-stack">
@@ -539,10 +576,21 @@ function BlogPage() {
             ) : null}
           </div>
           {canEdit ? (
-            <Link className="command-button" to={`/blog/${name}/${blogId}/edit`}>
-              <Edit3 size={18} />
-              <span>{t('actions.editBlog')}</span>
-            </Link>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <Link className="command-button" to={`/blog/${name}/${blogId}/edit`}>
+                <Edit3 size={18} />
+                <span>{t('actions.editBlog')}</span>
+              </Link>
+              <button
+                type="button"
+                className="command-button-delete"
+                onClick={() => void openDeleteConfirm()}
+                disabled={isDeleting}
+              >
+                <Trash2 size={18} />
+                <span>{t('actions.deleteBlog')}</span>
+              </button>
+            </div>
           ) : null}
         </div>
       </div>
@@ -552,6 +600,36 @@ function BlogPage() {
           <PostListRow key={`${post.name}:${post.identifier}`} item={post} />
         ))}
       </div>
+
+      {showDeleteConfirm ? (
+        <div className="modal-overlay" onClick={() => setShowDeleteConfirm(false)}>
+          <div className="modal-dialog" onClick={(e) => e.stopPropagation()} role="alertdialog" aria-label={t('form.deleteBlogTitle')}>
+            <h2>{t('form.deleteBlogTitle')}</h2>
+            <p>
+              <strong>{profile.data?.title ?? blogId}</strong>
+            </p>
+            {hasPosts ? (
+              <p>{t('form.deleteBlogHasPosts', { count: postCountForDelete })}</p>
+            ) : (
+              <p>{t('form.deleteBlogWarning')}</p>
+            )}
+            {deleteError ? <p className="modal-error">{deleteError}</p> : null}
+            <div className="modal-actions">
+              <button type="button" onClick={() => setShowDeleteConfirm(false)} disabled={isDeleting}>
+                {t('actions.cancel')}
+              </button>
+              <button
+                type="button"
+                className="modal-delete-btn"
+                onClick={() => void handleDeleteBlog()}
+                disabled={isDeleting || hasPosts}
+              >
+                {isDeleting ? '…' : t('form.deleteBlogConfirm')}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -559,6 +637,7 @@ function BlogPage() {
 function PostPage() {
   const { formatDate, t } = useAppLocale();
   const { name = '', postIdentifier = '' } = useParams();
+  const navigate = useNavigate();
   const parsed = useMemo(() => parsePostIdentifier(postIdentifier), [postIdentifier]);
   const [account, setAccount] = useState<AccountProfile | null>(null);
   const [post, setPost] = useState<LoadState<BlogPost | null>>({ status: 'loading', data: null });
@@ -566,6 +645,9 @@ function PostPage() {
   const [commentBody, setCommentBody] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const commentsRef = useRef<HTMLElement | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -604,6 +686,20 @@ function PostPage() {
     }
   };
 
+  const handleDelete = async () => {
+    if (!post.data || isDeleting) return;
+    setIsDeleting(true);
+    setDeleteError('');
+    try {
+      await deleteBlogPost(post.data.ownerName, postIdentifier);
+      setShowDeleteConfirm(false);
+      navigate(`/blog/${post.data.ownerName}/${post.data.blogId}`, { replace: true });
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : t('error.deletePost'));
+      setIsDeleting(false);
+    }
+  };
+
   if (post.status === 'error') return <Notice tone="error" message={post.message} />;
 
   const canEdit = Boolean(post.data && account?.names.includes(post.data.ownerName));
@@ -638,10 +734,21 @@ function PostPage() {
             ) : null}
           </div>
           {canEdit ? (
-            <Link className="command-button" to={`/post/${name}/${postIdentifier}/edit`}>
-              <Edit3 size={18} />
-              <span>{t('actions.editPost')}</span>
-            </Link>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <Link className="command-button" to={`/post/${name}/${postIdentifier}/edit`}>
+                <Edit3 size={18} />
+                <span>{t('actions.editPost')}</span>
+              </Link>
+              <button
+                type="button"
+                className="command-button-delete"
+                onClick={() => setShowDeleteConfirm(true)}
+                disabled={isDeleting}
+              >
+                <Trash2 size={18} />
+                <span>{t('actions.deletePost')}</span>
+              </button>
+            </div>
           ) : null}
         </div>
       </div>
@@ -698,6 +805,32 @@ function PostPage() {
           </button>
         </div>
       </section>
+
+      {showDeleteConfirm ? (
+        <div className="modal-overlay" onClick={() => setShowDeleteConfirm(false)}>
+          <div className="modal-dialog" onClick={(e) => e.stopPropagation()} role="alertdialog" aria-label={t('form.deletePostTitle')}>
+            <h2>{t('form.deletePostTitle')}</h2>
+            <p>
+              <strong>{post.data?.title ?? postIdentifier}</strong>
+            </p>
+            <p>{t('form.deletePostWarning')}</p>
+            {deleteError ? <p className="modal-error">{deleteError}</p> : null}
+            <div className="modal-actions">
+              <button type="button" onClick={() => setShowDeleteConfirm(false)} disabled={isDeleting}>
+                {t('actions.cancel')}
+              </button>
+              <button
+                type="button"
+                className="modal-delete-btn"
+                onClick={() => void handleDelete()}
+                disabled={isDeleting}
+              >
+                {isDeleting ? '…' : t('form.deletePostConfirm')}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </article>
   );
 }

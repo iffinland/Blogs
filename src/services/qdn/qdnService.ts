@@ -368,3 +368,31 @@ export const publishJsonResource = async <T = unknown>({
   await waitForResourceReady(service, name, identifier);
   return verifyJsonResource<T>(service, name, identifier, verify);
 };
+
+// ── Delete ─────────────────────────────────────────────────
+
+/**
+ * Delete a QDN resource via the Core's native DELETE endpoint.
+ *
+ * This is a real, permanent deletion — not a tombstone or unpublish.
+ * The resource is removed from the QDN network.  After successful
+ * deletion, SEARCH and FETCH will no longer return the resource.
+ *
+ * Contract (from qortium-home platform.ts):
+ *   POST /arbitrary/resource/{service}/{name}/{identifier}/delete
+ *   (or /arbitrary/public/resource/… for public nodes)
+ *   with empty body.  The Home bridge translates this to
+ *   action: 'DELETE_QDN_RESOURCE'.
+ */
+export const deleteQdnResource = async (
+  service: string,
+  name: string,
+  identifier: string,
+) => {
+  await requestQortium({
+    action: 'DELETE_QDN_RESOURCE',
+    service,
+    name,
+    identifier,
+  });
+};

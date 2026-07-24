@@ -17,6 +17,7 @@ import {
 } from '../qdn/identifiers';
 import {
   createJsonResourceToPublish,
+  deleteQdnResource,
   fetchJsonResource,
   fetchJsonResourceWithReadiness,
   publishJsonResource,
@@ -496,6 +497,55 @@ export const updatePost = async (params: {
   await publishPostWithMedia({ post: updatedPost, identifier, pendingMedia: params.pendingMedia });
 
   return { post: updatedPost, identifier };
+};
+
+/**
+ * Delete a blog post.
+ *
+ * Canonical target: (BLOG_POST, ownerName, identifier).
+ * Ownership is verified client-side (UX only) — the Qortium Core
+ * remains the authoritative security boundary.
+ *
+ * Deletion is permanent native removal (not a tombstone).
+ * After success the resource will not appear in SEARCH or FETCH.
+ */
+export const deleteBlogPost = async (ownerName: string, postIdentifier: string) => {
+  const account = await getSelectedAccount();
+  if (account.names.length === 0) {
+    throw new Error('A registered Qortium name is required to delete a post.');
+  }
+  requireOwnedName(account.names, ownerName);
+  await deleteQdnResource('BLOG_POST', ownerName, postIdentifier);
+};
+
+/**
+ * Delete a blog profile.
+ *
+ * Canonical target: (BLOG, ownerName, blogId).
+ *
+ * IMPORTANT: Deleting a BLOG resource does NOT cascade to
+ * BLOG_POST resources.  Each post is an independent QDN resource.
+ * Callers must check for orphan posts before deletion.
+ *
+ * Returns the count of remaining posts for the caller to decide
+ * whether to proceed — a non-zero count means posts still exist.
+ */
+export const deleteBlog = async (ownerName: string, blogId: string) => {
+  const account = await getSelectedAccount();
+  if (account.names.length === 0) {
+    throw new Error('A registered Qortium name is required to delete a blog.');
+  }
+  requireOwnedName(account.names, ownerName);
+  await deleteQdnResource('BLOG', ownerName, blogId);
+};
+
+/**
+ * Check how many posts exist in a blog.  Used as an orphan-content
+ * safety gate before blog deletion.
+ */
+export const countPostsInBlog = async (blogId: string, ownerName: string) => {
+  const items = await listPosts(blogId, 0, 100, ownerName);
+  return items.length;
 };
 
 export const createComment = async (params: { blogId: string; postId: string; body: string }) => {
