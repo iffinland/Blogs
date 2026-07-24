@@ -2,6 +2,7 @@ import { Download } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { QdnResourceRef, QdnService } from '../../types/blog';
 import { getQdnResourceUrl } from '../../services/qdn/qdnService';
+import { useQdnImageUrl } from '../../services/qdn/useQdnImageUrl';
 import { getSafeLinkHref, autolinkText } from '../../services/blog/richText';
 import { requestQortium } from '../../services/qortium/qortiumClient';
 
@@ -214,6 +215,12 @@ const splitTextLines = (value: string, keyPrefix: string) =>
 
 function MediaNode({ type, payload }: { type: 'image' | 'video' | 'file'; payload: string }) {
   const ref = useMemo(() => parseMediaRef(type, payload), [payload, type]);
+
+  if (type === 'image') {
+    return <MediaImage refData={ref} />;
+  }
+
+  // Video and file types use the simpler URL-only flow (no image recovery needed)
   const [url, setUrl] = useState('');
 
   useEffect(() => {
@@ -234,10 +241,6 @@ function MediaNode({ type, payload }: { type: 'image' | 'video' | 'file'; payloa
     return <div className="media-placeholder">{ref.filename || ref.identifier}</div>;
   }
 
-  if (type === 'image') {
-    return <img className="rich-media-image" src={url} alt={ref.filename || ref.identifier} />;
-  }
-
   if (type === 'video') {
     return <video className="rich-media-video" src={url} controls preload="metadata" />;
   }
@@ -253,6 +256,23 @@ function MediaNode({ type, payload }: { type: 'image' | 'video' | 'file'; payloa
       <Download size={18} />
       <span>{ref.filename || ref.identifier}</span>
     </a>
+  );
+}
+
+function MediaImage({ refData }: { refData: QdnResourceRef }) {
+  const { url, handleError } = useQdnImageUrl(refData);
+
+  if (!url) {
+    return <div className="media-placeholder">{refData.filename || refData.identifier}</div>;
+  }
+
+  return (
+    <img
+      className="rich-media-image"
+      src={url}
+      alt={refData.filename || refData.identifier}
+      onError={handleError}
+    />
   );
 }
 

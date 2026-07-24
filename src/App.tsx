@@ -60,7 +60,7 @@ import {
 import { type PendingBlogMedia, publishBlogImage } from './services/blog/mediaService';
 import { findFirstQdnImageRef } from './services/blog/richText';
 import { buildBlogLink, buildPostLink, getInitialDeepLink } from './services/blog/deepLinks';
-import { getQdnResourceUrl } from './services/qdn/qdnService';
+import { useQdnImageUrl } from './services/qdn/useQdnImageUrl';
 import { parsePostIdentifier } from './services/qdn/identifiers';
 import { createTranslator } from './i18n';
 import defaultBlogCover from './assets/default-blog-cover.svg';
@@ -1288,33 +1288,10 @@ function QdnImage({
   className: string;
   fallbackSrc?: string;
 }) {
-  const [url, setUrl] = useState('');
-
-  useEffect(() => {
-    let active = true;
-    void getQdnResourceUrl(refData)
-      .then((resourceUrl) => {
-        if (active) setUrl(resourceUrl);
-      })
-      .catch(() => {
-        if (active) setUrl(fallbackSrc ?? '');
-      });
-    return () => {
-      active = false;
-    };
-  }, [fallbackSrc, refData]);
+  const { url, handleError } = useQdnImageUrl(refData, fallbackSrc);
 
   if (!url) return <div className={`${className} image-loading`} />;
-  return (
-    <img
-      className={className}
-      src={url}
-      alt={alt}
-      onError={() => {
-        if (fallbackSrc && url !== fallbackSrc) setUrl(fallbackSrc);
-      }}
-    />
-  );
+  return <img className={className} src={url} alt={alt} onError={handleError} />;
 }
 
 function BlogListCard({ item }: { item: BlogListItem }) {
