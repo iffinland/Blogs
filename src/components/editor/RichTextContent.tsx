@@ -1,11 +1,124 @@
 import { Download } from 'lucide-react';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { QdnResourceRef, QdnService } from '../../types/blog';
 import { getQdnResourceUrl } from '../../services/qdn/qdnService';
+import { getSafeLinkHref, autolinkText } from '../../services/blog/richText';
+import { requestQortium } from '../../services/qortium/qortiumClient';
 
 type RichTextContentProps = {
   value: string;
 };
+
+// ── Link type classification ───────────────────────────────
+
+type LinkKind = 'internal-nav' | 'web' | 'local' | 'blocked';
+
+const classifyLinkHref = (href: string): LinkKind => {
+  const lower = href.toLowerCase();
+  if (lower.startsWith('qdn://') || lower.startsWith('home://') || lower.startsWith('core://')) {
+    return 'internal-nav';
+  }
+  if (lower.startsWith('https://') || lower.startsWith('http://')) return 'web';
+  if (href.startsWith('/') || href.startsWith('#') || href.startsWith('?')) return 'local';
+  return 'blocked';
+};
+
+// ── Internal-link navigation (Qortium Home OPEN_NEW_TAB) ────
+
+const openInternalLink = async (address: string) => {
+  try {
+    await requestQortium({ action: 'OPEN_NEW_TAB', address });
+  } catch {
+    // In browser-dev mode OPEN_NEW_TAB is not available.
+    // Fall back to letting the <a href> navigate.
+    window.open(address, '_blank');
+  }
+};
+
+// ── Clipboard ───────────────────────────────────────────────
+
+const copyWithTextarea = (value: string) => {
+  const textarea = document.createElement('textarea');
+  textarea.value = value;
+  textarea.style.position = 'fixed';
+  textarea.style.top = '0';
+  textarea.style.left = '0';
+  textarea.style.width = '1px';
+  textarea.style.height = '1px';
+  textarea.style.opacity = '0';
+  textarea.setAttribute('readonly', 'readonly');
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  textarea.setSelectionRange(0, textarea.value.length);
+  const copied = document.execCommand('copy');
+  textarea.remove();
+  return copied;
+};
+
+const copyText = async (value: string) => {
+  if (copyWithTextarea(value)) return true;
+  if (!navigator.clipboard?.writeText) return false;
+  try {
+    await navigator.clipboard.writeText(value);
+    return true;
+  } catch {
+    return copyWithTextarea(value);
+  }
+};
+
+// ── RichLink ────────────────────────────────────────────────
+
+const COPY_BADGE_MS = 1800;
+
+function RichLink({ href, children }: { href: string; children: ReactNode }) {
+  const kind = classifyLinkHref(href);
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+
+  const handleClick = useCallback(
+    async (event: React.MouseEvent) => {
+      if (kind === 'internal-nav') {
+        event.preventDefault();
+        await openInternalLink(href);
+        return;
+      }
+      if (kind === 'web') {
+        event.preventDefault();
+        if (timerRef.current) clearTimeout(timerRef.current);
+        const ok = await copyText(href);
+        setCopyState(ok ? 'copied' : 'failed');
+        timerRef.current = setTimeout(() => setCopyState('idle'), COPY_BADGE_MS);
+      }
+    },
+    [href, kind],
+  );
+
+  if (kind === 'blocked') return <span>{children}</span>;
+
+  return (
+    <span className="rich-link-wrapper">
+      <a
+        href={href}
+        onClick={handleClick}
+      >
+        {children}
+      </a>
+      {copyState !== 'idle' && (
+        <span
+          className={`rich-copy-badge${copyState === 'failed' ? ' rich-copy-badge-failed' : ''}`}
+          role="status"
+        >
+          {copyState === 'copied' ? 'Copied' : 'Copy failed'}
+        </span>
+      )}
+    </span>
+  );
+}
+
+// ── Tokenizer / renderer ────────────────────────────────────
 
 type Token =
   | { kind: 'text'; value: string }
@@ -21,21 +134,6 @@ const decodeTagValue = (value: string | undefined) => {
   } catch {
     return value ?? '';
   }
-};
-
-const getSafeLinkHref = (value: string | undefined) => {
-  const href = value?.trim() ?? '';
-  if (!href) return '';
-  const lowerHref = href.toLowerCase();
-  if (
-    lowerHref.startsWith('qdn://') ||
-    lowerHref.startsWith('/') ||
-    lowerHref.startsWith('#') ||
-    lowerHref.startsWith('?')
-  ) {
-    return href;
-  }
-  return '';
 };
 
 const parseMediaRef = (type: 'image' | 'video' | 'file', payload: string): QdnResourceRef => {
@@ -90,6 +188,17 @@ const tokenize = (value: string) => {
 
   return tokens;
 };
+
+const renderTextSegments = (segments: ReturnType<typeof autolinkText>, keyPrefix: string): ReactNode[] =>
+  segments.flatMap((segment, index) => {
+    const key = `${keyPrefix}-${index}`;
+    if (segment.kind === 'link') {
+      const href = getSafeLinkHref(segment.href);
+      if (!href) return splitTextLines(segment.value, key);
+      return <RichLink key={key} href={href}>{segment.value}</RichLink>;
+    }
+    return splitTextLines(segment.value, key);
+  });
 
 const splitTextLines = (value: string, keyPrefix: string) =>
   value.split(/\r?\n/).flatMap((line, index, lines) => {
@@ -150,7 +259,7 @@ function MediaNode({ type, payload }: { type: 'image' | 'video' | 'file'; payloa
 const renderTokens = (tokens: Token[], keyPrefix: string): ReactNode[] =>
   tokens.map((token, index) => {
     const key = `${keyPrefix}-${index}`;
-    if (token.kind === 'text') return splitTextLines(token.value, key);
+    if (token.kind === 'text') return renderTextSegments(autolinkText(token.value), key);
     if (token.kind === 'media')
       return <MediaNode key={key} type={token.type} payload={token.value} />;
 
@@ -173,11 +282,7 @@ const renderTokens = (tokens: Token[], keyPrefix: string): ReactNode[] =>
     if (token.tag === 'url') {
       const href = getSafeLinkHref(token.param);
       if (!href) return <span key={key}>{children}</span>;
-      return (
-        <a key={key} href={href} target="_blank" rel="noreferrer">
-          {children}
-        </a>
-      );
+      return <RichLink key={key} href={href}>{children}</RichLink>;
     }
     return children;
   });
